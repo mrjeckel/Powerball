@@ -7,7 +7,7 @@ from datetime import datetime as dt
 from sqlalchemy.orm import Session
 from models import WinningNumbers
 
-class WebScraper:
+class Scraper:
     download_url = 'https://www.texaslottery.com/export/sites/lottery/Games/Powerball/Winning_Numbers/powerball.csv'
     WinningNumbers = namedtuple("WinningNumber", "date numbers")
 
@@ -56,4 +56,4 @@ class WebScraper:
 
 
 if __name__ == "__main__":
-    WebScraper()
+    Scraper()

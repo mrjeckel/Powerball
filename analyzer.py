@@ -2,7 +2,9 @@ import sqlalchemy as db
 import numpy as np
 
 from sqlalchemy.orm import Session
+from pandas import DataFrame, to_datetime
 from models import WinningNumbers
+from cleaner import PowerballCleaner2015
 
 class Analyzer:
     # [,)
@@ -11,57 +13,37 @@ class Analyzer:
 
     def __init__(self):
         self.engine = db.create_engine('sqlite:///Powerball.db')
-        stored_numbers = self._read_all_winning_numbers()
-        print(self._get_least_occurring_ball(stored_numbers))
-        print(self._get_least_occurring_powerball(stored_numbers))
+        winning_numbers = self._read_all_winning_numbers()
+        powerball_cleaner = PowerballCleaner2015(winning_numbers)
+
+        print(self._get_least_occurring_ball(powerball_cleaner.ball_numbers))
+        print(self._get_least_occurring_powerball(powerball_cleaner.powerball_numbers))
 
     def _read_all_winning_numbers(self):
         with Session(bind=self.engine) as sess:
-            query = sess.query(WinningNumbers.numbers).all()
-            stored_numbers = [numbers[0].strip('[]').split(', ') for numbers in query]
+            query = sess.query(WinningNumbers.date, WinningNumbers.numbers).all()
+            dates = to_datetime([result[0] for result in query])
+            stored_numbers = [result[1].strip('[]').split(', ') for result in query]
 
-        return np.array(stored_numbers, dtype=int)
+        return DataFrame(data=stored_numbers, index=dates).astype(int)
 
-    def _get_least_occurring_ball(self, stored_numbers):
-        ball_numbers = stored_numbers.T[:-1]
+    def _get_least_occurring_ball(self, ball_numbers):
+        missing = self._check_for_missing(self.ball_range, ball_numbers)
+        normalized_numbers = np.append(ball_numbers, missing)
 
-        min_numbers = []
-        for row in ball_numbers:
-            missing = self._check_for_missing(self.ball_range, row)
+        elements, frequency = np.unique(normalized_numbers, return_counts=True)
+        return elements[np.argsort(frequency)[:5]]
 
-            if any(missing):
-                min_numbers.append(missing)
-                continue
-            
-            min_numbers.append(self._get_min_occurrence(row))
+    def _get_least_occurring_powerball(self, powerball_numbers):
+        missing = self._check_for_missing(self.powerball_range, powerball_numbers)
+        normalized_numbers = np.append(powerball_numbers, missing)
 
-        return min_numbers
-
-    def _get_least_occurring_powerball(self, stored_numbers):
-        powerball_numbers = stored_numbers.T[-1]
-        clean_powerball = self._clean_powerball(powerball_numbers)
-        missing = self._check_for_missing(self.powerball_range, clean_powerball)
-
-        if any(missing):
-            return missing
-
-        return self._get_min_occurrence(clean_powerball)
-
-    def _clean_powerball(self, powerball_numbers):
-        mask = powerball_numbers <= 26
-        return powerball_numbers[mask]
+        elements, frequency = np.unique(normalized_numbers, return_counts=True)
+        return elements[np.argsort(frequency)[0]]
 
     def _check_for_missing(self, numbers, truth):
             missing = np.where(np.isin(truth, numbers, invert=True))
             return missing[0]
-
-    def _get_min_occurrence(self, numbers):
-            # index of lowest occurrence
-            # indices are 0 to 68
-            # this currently only return one value if even multiple are equal in occurence
-            arg_occ = np.unique(numbers, return_counts=True)
-            min_index = np.argmin(arg_occ[1])
-            return arg_occ[0][min_index] + 1
 
 
 if __name__ == "__main__":
