@@ -41,6 +41,7 @@ class PowerballCleaner2015:
 
     @classmethod
     def get_ball_and_powerball_arrays(cls, winning_numbers, draw_date):
+        # TODO: unit testing to make sure data is getting cleaned properly
         ball_numbers = cls._add_missing_balls(winning_numbers)
         
         if draw_date >= cls.change_date:

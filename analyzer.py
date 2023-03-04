@@ -49,13 +49,14 @@ class Analyzer:
             return missing[0]
 
     def _calculate_distribution(self, dataframe, draw_date):
+        """
+        Returns normalized draw distribution
+        """
         ball_draws, powerball_draws = self.powerball_cleaner.get_ball_and_powerball_arrays(dataframe)
+        ball_frequency = self._get_occurrences(ball_draws)
+        powerball_frequency = self._get_occurrences(powerball_draws)
 
-        # TODO: deal with occurrences of 0
-        _, ball_frequency = np.unique(ball_draws, return_counts=True)
-        _, powerball_frequency = np.unique(powerball_draws, return_counts=True)
-
-        # this bit is in dire need of unit testing due to int wrapping
+        # TODO: this bit is in dire need of unit testing due to int wrapping
         ball_tmp = 1 / np.power(ball_frequency.size, (ball_frequency + 1), dtype=np.double)
         ball_distribution = ball_tmp/np.sum(ball_tmp)
 
@@ -63,6 +64,18 @@ class Analyzer:
         powerball_distribution = powerball_tmp/np.sum(powerball_tmp)
 
         return ball_distribution, powerball_distribution
+    
+    def _get_occurrences(self, ball_draws):
+        """
+        Returns frequency with 0 for draws that have not occurred
+        """
+        ball_array, ball_frequency = np.unique(ball_draws, return_counts=True)
+
+        missing_ball_indicies = np.where(np.isin(self.ball_range, ball_array, invert=True))
+        missing_ball_indicies -= np.arange(missing_ball_indicies.size)
+
+        # TODO: unit test the proper filling of 0s
+        return np.insert(ball_frequency, missing_ball_indicies, 0)
 
 
 if __name__ == "__main__":
