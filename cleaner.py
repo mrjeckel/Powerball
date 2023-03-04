@@ -1,6 +1,7 @@
 import numpy as np
 
 from datetime import datetime as dt
+from scipy import stats
 
 class PowerballCleaner2015:
     """
@@ -16,24 +17,35 @@ class PowerballCleaner2015:
         self.ball_numbers = self._clean_ball_numbers(winning_numbers)
         self.powerball_numbers = self._clean_powerball_numbers(winning_numbers)
 
-    def _clean_ball_numbers(self, winning_numbers):
-        normalized_winners = self._add_missing_before_date(winning_numbers, self.change_date)
-
-        # Filter the winners that don't need to be modified then combine and return
-        raw_winners = winning_numbers[winning_numbers.index >= self.change_date].values.T[:-1].flatten()
-        return np.append(normalized_winners, raw_winners)
-
-    def _add_missing_before_date(self, winning_numbers, date):
+    def _add_missing_balls(self, winning_numbers):
         # Filter all winners before the date and drop the powerball
-        sliced_numbers = winning_numbers[winning_numbers.index < date]
-        ball_numbers = sliced_numbers.values.T[:-1].flatten()
+        ball_numbers = winning_numbers.loc[:, :4].values.flatten()
+        sliced_numbers = winning_numbers[winning_numbers.index <= self.change_date]
+        sliced_ball_numbers = sliced_numbers.loc[:, :4].values.flatten()
 
-        # Find the median occurence and add missing numbers at that median
-        _, frequency = np.unique(ball_numbers, return_counts=True)
-        median = int(np.median(frequency))
-        return np.append(ball_numbers, np.tile(self.missing_ball_range, median))
+        # Find the mode occurence and add missing numbers at that median
+        _, frequency = np.unique(sliced_ball_numbers, return_counts=True)
+        mode = int(stats.mode(frequency).mode[0])
+        return np.append(ball_numbers, np.tile(self.missing_ball_range, mode))
 
-    def _clean_powerball_numbers(self, winning_numbers):
+    def _clean_ball_numbers(self, winning_numbers):
+        return self._add_missing_balls(winning_numbers)
+
+    def _remove_missing_powerballs(self, winning_numbers):
         powerball_numbers = winning_numbers.values.T[-1].flatten()
         mask = powerball_numbers <= self.powerball_limit
         return powerball_numbers[mask]
+
+    def _clean_powerball_numbers(self, winning_numbers):
+        return self._remove_missing_powerballs(winning_numbers)
+
+    @classmethod
+    def get_ball_and_powerball_arrays(cls, winning_numbers, draw_date):
+        ball_numbers = cls._add_missing_balls(winning_numbers)
+        
+        if draw_date >= cls.change_date:
+            powerball_numbers = cls._remove_missing_powerballs
+        else:
+            powerball_numbers = winning_numbers.values.T[-1].flatten()
+
+        return ball_numbers, powerball_numbers

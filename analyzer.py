@@ -8,16 +8,19 @@ from cleaner import PowerballCleaner2015
 
 class Analyzer:
     # [,)
+    # TODO: work in numbers with equal occurrences
     ball_range = np.arange(1, 70)
     powerball_range =  np.arange(1, 27)
 
     def __init__(self):
         self.engine = db.create_engine('sqlite:///Powerball.db')
-        winning_numbers = self._read_all_winning_numbers()
-        powerball_cleaner = PowerballCleaner2015(winning_numbers)
+        self.winning_numbers = self._read_all_winning_numbers()
+        self.powerball_cleaner = PowerballCleaner2015(self.winning_numbers)
 
-        print(self._get_least_occurring_ball(powerball_cleaner.ball_numbers))
-        print(self._get_least_occurring_powerball(powerball_cleaner.powerball_numbers))
+        #self._calculate_distribution(self.winning_numbers)
+
+        print(self._get_least_occurring_ball(self.powerball_cleaner.ball_numbers))
+        print(self._get_least_occurring_powerball(self.powerball_cleaner.powerball_numbers))
 
     def _read_all_winning_numbers(self):
         with Session(bind=self.engine) as sess:
@@ -32,7 +35,7 @@ class Analyzer:
         normalized_numbers = np.append(ball_numbers, missing)
 
         elements, frequency = np.unique(normalized_numbers, return_counts=True)
-        return elements[np.argsort(frequency)[:5]]
+        return np.sort(elements[np.argsort(frequency)[:5]])
 
     def _get_least_occurring_powerball(self, powerball_numbers):
         missing = self._check_for_missing(self.powerball_range, powerball_numbers)
@@ -44,6 +47,22 @@ class Analyzer:
     def _check_for_missing(self, numbers, truth):
             missing = np.where(np.isin(truth, numbers, invert=True))
             return missing[0]
+
+    def _calculate_distribution(self, dataframe, draw_date):
+        ball_draws, powerball_draws = self.powerball_cleaner.get_ball_and_powerball_arrays(dataframe)
+
+        # TODO: deal with occurrences of 0
+        _, ball_frequency = np.unique(ball_draws, return_counts=True)
+        _, powerball_frequency = np.unique(powerball_draws, return_counts=True)
+
+        # this bit is in dire need of unit testing due to int wrapping
+        ball_tmp = 1 / np.power(ball_frequency.size, (ball_frequency + 1), dtype=np.double)
+        ball_distribution = ball_tmp/np.sum(ball_tmp)
+
+        powerball_tmp = 1 / np.power(powerball_frequency.size, (powerball_frequency + 1), dtype=np.double)
+        powerball_distribution = powerball_tmp/np.sum(powerball_tmp)
+
+        return ball_distribution, powerball_distribution
 
 
 if __name__ == "__main__":
