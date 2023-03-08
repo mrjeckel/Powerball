@@ -6,10 +6,9 @@ from scipy import stats
 class PowerballCleaner2015:
     """
     Normalizes data around the changes made to Powerball on Oct 04, 2015
-    White balls 60-69 we added while Powerballs were reduced from 35 to 26
+    White balls 60-69 were added while Powerballs were reduced from 35 to 26
     """
     change_date = dt.strptime('10/04/2015', '%m/%d/%Y')
-    # [,)
     missing_ball_range = np.arange(60, 70)
     powerball_limit = 26
 
@@ -50,3 +49,13 @@ class PowerballCleaner2015:
             powerball_numbers = winning_numbers.values.T[-1].flatten()
 
         return ball_numbers, powerball_numbers
+    
+
+class MegaMillionsCleaner2017:
+    """
+    Normalizes data around the changes made to MegaMillions on Oct 28, 2017
+    White balls 71-75 were removed while Megaballs increased from 15 to 25
+    """
+    change_date = dt.strptime('10/28/2017', '%m/%d/%Y')
+    ball_limit = 70
+    missing_megaball_range = np.arange(71, 76)

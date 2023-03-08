@@ -8,11 +8,10 @@ from sqlalchemy.orm import Session
 from models import WinningNumbers
 
 class Scraper:
-    download_url = 'https://www.texaslottery.com/export/sites/lottery/Games/Powerball/Winning_Numbers/powerball.csv'
     WinningNumbers = namedtuple("WinningNumber", "date numbers")
 
     def __init__(self):
-        self.engine = db.create_engine('sqlite:///Powerball.db')
+        self.engine = db.create_engine(self.db_address)
 
         powerball_data = self._get_latest_data()
         filtered_data = self._filter_new_numbers(powerball_data)
@@ -27,7 +26,8 @@ class Scraper:
         # potential to fail here without exception
 
         powerball_data = []
-        for row in csv_data.split():
+
+        for row in [csv_row for csv_row in csv_data.split('\n') if csv_row]:
             row_list = row.split(',')
             # sqlite only supports - formatting for dates
             current_date = dt.strptime('-'.join(row_list[1:4]), '%m-%d-%Y').date()
@@ -53,7 +53,18 @@ class Scraper:
 
         return [self.WinningNumbers(winner.date, winner.numbers)
             for winner in powerball_data if winner.date not in stored_dates]
+    
+
+class PowerballScraper(Scraper):
+    download_url = 'https://www.texaslottery.com/export/sites/lottery/Games/Powerball/Winning_Numbers/powerball.csv'
+    db_address = 'sqlite:///Powerball.db'
+
+
+class MegaMillionsScraper(Scraper):
+    download_url = 'https://www.texaslottery.com/export/sites/lottery/Games/Mega_Millions/Winning_Numbers/megamillions.csv'
+    db_address = 'sqlite:///MegaMillions.db'
 
 
 if __name__ == "__main__":
-    Scraper()
+    PowerballScraper()
+    MegaMillionsScraper()

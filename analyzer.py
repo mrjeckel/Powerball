@@ -4,18 +4,13 @@ import numpy as np
 from sqlalchemy.orm import Session
 from pandas import DataFrame, to_datetime
 from models import WinningNumbers
-from cleaner import PowerballCleaner2015
+from cleaner import PowerballCleaner2015, MegaMillionsCleaner2017
 
-class Analyzer:
-    # [,)
-    # TODO: work in numbers with equal occurrences
-    ball_range = np.arange(1, 70)
-    powerball_range =  np.arange(1, 27)
-
+class Analyzer():
     def __init__(self):
-        self.engine = db.create_engine('sqlite:///Powerball.db')
+        self.engine = db.create_engine(self.db_address)
         self.winning_numbers = self._read_all_winning_numbers()
-        self.powerball_cleaner = PowerballCleaner2015(self.winning_numbers)
+        self.powerball_cleaner = self.cleaner(self.winning_numbers)
 
         #self._calculate_distribution(self.winning_numbers)
 
@@ -76,7 +71,21 @@ class Analyzer:
 
         # TODO: unit test the proper filling of 0s
         return np.insert(ball_frequency, missing_ball_indicies, 0)
+    
+
+class PowerballAnalyzer(Analyzer):
+    db_address = 'sqlite:///Powerball.db'
+    ball_range = np.arange(1, 70)
+    powerball_range =  np.arange(1, 27)
+    cleaner = PowerballCleaner2015
+
+class MegaMillionsAnalyzer(Analyzer):
+    db_address = 'sqlite:///MegaMillions.db'
+    ball_range = np.arange(1, 71)
+    powerball_range =  np.arange(1, 26)
+    cleaner = MegaMillionsCleaner2017
 
 
 if __name__ == "__main__":
-    Analyzer()
+    PowerballAnalyzer()
+    #MegaMillionsAnalyzer()
