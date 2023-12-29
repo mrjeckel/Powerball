@@ -25,4 +25,4 @@ A CLI application that returns most likely next draw for lottery numbers. Curren
     - Probability calculation
     - Float wrapping
 - Support for MegaMillions
-- Explore more sophisticated perdictive methods based on known data
+- Explore more sophisticated predictive methods based on known data
