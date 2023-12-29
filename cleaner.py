@@ -24,7 +24,7 @@ class PowerballCleaner2015:
 
         # Find the mode occurence and add missing numbers at that median
         _, frequency = np.unique(sliced_ball_numbers, return_counts=True)
-        mode = int(stats.mode(frequency).mode[0])
+        mode = int(stats.mode(frequency).mode)
         return np.append(ball_numbers, np.tile(self.missing_ball_range, mode))
 
     def _clean_ball_numbers(self, winning_numbers):
