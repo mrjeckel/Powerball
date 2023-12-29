@@ -2,15 +2,12 @@
 A CLI application that returns most likely next draw for lottery numbers. Currently, it only supports PowerBall, and uses a probablistic determination assuming that the underlying distirbution is uniform.
 
 # Getting Started
-You'll need python3, pipenv, and sqlite.
+## Requirements
+- python3
+- pipenv
+- sqlite3
 
 ```
-# Install sqlite
-~/Powerball$: sudo apt install sqlite3
-
-# Install pipenv
-~/Powerball$: sudo pip install pipenv
-
 # Build the venv
 ~/Powerball$: pipenv install --deploy
 
