@@ -1,3 +1,6 @@
+# What is this?
+A CLI application that returns most likely next draw for lottery numbers. Currently, it only supports PowerBall, and uses a probablistic determination assuming that the underlying distirbution is uniform.
+
 # Getting Started
 You'll need python3, pipenv, and sqlite.
 
@@ -18,7 +21,7 @@ You'll need python3, pipenv, and sqlite.
 ~/Powerball$: ./analyzer.py
 ```
 
-# To-Do
+# Future Work
 - Unit testing for:
     - Correct historical data
     - Cleaning
