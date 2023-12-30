@@ -18,7 +18,7 @@ A CLI application that returns most likely next draw for lottery numbers. Curren
 ~/Powerball$: ./analyzer.py
 ```
 
-# Future Work
+# To Do
 - Unit testing for:
     - Correct historical data
     - Cleaning
