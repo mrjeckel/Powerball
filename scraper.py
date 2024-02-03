@@ -1,68 +1,91 @@
-#!/usr/bin/env python3
 import requests
 import sqlalchemy as db
-
 from collections import namedtuple
+
 from datetime import datetime as dt
 from sqlalchemy.orm import Session
-from models import WinningNumbers
+from models import LotteryDraw
 
-class Scraper:
-    WinningNumbers = namedtuple("WinningNumber", "date numbers")
 
-    def __init__(self):
-        self.engine = db.create_engine(self.db_address)
+WinningNumbers = namedtuple("WinningNumber", "date numbers single")
 
-        powerball_data = self._get_latest_data()
-        filtered_data = self._filter_new_numbers(powerball_data)
 
-        self._store_winning_numbers(filtered_data)
+class FivePlusOneScraper:
+    """
+    Downloads and ingests lottery data from games of format 'N N N N N P'
+    """
 
-    def _get_latest_data(self):
-        response = requests.get(self.download_url)
+    DATE_SLICE = slice(1, 4)
+    NUMBERS_SLICE = slice(4, 9)
+    SINGLE_INDEX = 9
+
+    @classmethod
+    def _get_latest_data(cls):
+        response = requests.get(cls.download_url)
 
         if response.status_code == 200:
             csv_data = response.text
         # potential to fail here without exception
 
-        powerball_data = []
+        numbers_data = []
 
-        for row in [csv_row for csv_row in csv_data.split('\n') if csv_row]:
-            row_list = row.split(',')
+        for row in [csv_row for csv_row in csv_data.split("\n") if csv_row]:
+            row_list = row.split(",")
             # sqlite only supports - formatting for dates
-            current_date = dt.strptime('-'.join(row_list[1:4]), '%m-%d-%Y').date()
+            current_date = dt.strptime(
+                "-".join(row_list[cls.DATE_SLICE]), "%m-%d-%Y"
+            ).date()
 
             # sqlite doesn't support arrays, so we store as a string
-            winning_numbers = str([int(number) for number in row_list[4:10]])
-            powerball_data.append(self.WinningNumbers(current_date, winning_numbers))
+            winning_numbers = str(
+                [int(number) for number in row_list[cls.NUMBERS_SLICE]]
+            )
+            single = row_list[cls.SINGLE_INDEX]
+            numbers_data.append(WinningNumbers(current_date, winning_numbers, single))
 
-        return powerball_data
+        return numbers_data
 
-    def _store_winning_numbers(self, powerball_data):
-        winning_numbers = [WinningNumbers(date=item.date, numbers=item.numbers)
-            for item in powerball_data]
+    @staticmethod
+    def _store_winning_numbers(numbers_data, engine):
+        winning_numbers = [
+            LotteryDraw(date=item.date, numbers=item.numbers, single=item.single)
+            for item in numbers_data
+        ]
 
-        with Session(bind=self.engine) as sess:
+        with Session(bind=engine) as sess:
             sess.add_all(winning_numbers)
             sess.commit()
 
-    def _filter_new_numbers(self, powerball_data):
-        with Session(bind=self.engine) as sess:
-            query = sess.query(WinningNumbers.date).distinct()
-            stored_dates = [date[0] for date in query]
+    @staticmethod
+    def _filter_new_numbers(numbers_data, engine):
+        with Session(bind=engine) as sess:
+            query = sess.query(LotteryDraw.date).distinct()
+            stored_dates = [row[0] for row in query]
 
-        return [self.WinningNumbers(winner.date, winner.numbers)
-            for winner in powerball_data if winner.date not in stored_dates]
-    
+        return [
+            WinningNumbers(winner.date, winner.numbers, winner.single)
+            for winner in numbers_data
+            if winner.date not in stored_dates
+        ]
 
-class PowerballScraper(Scraper):
-    download_url = 'https://www.texaslottery.com/export/sites/lottery/Games/Powerball/Winning_Numbers/powerball.csv'
-    db_address = 'sqlite:///Powerball.db'
+    @classmethod
+    def scrape_and_store(cls):
+        engine = db.create_engine(cls.db_address)
+
+        numbers_data = cls._get_latest_data()
+        filtered_data = cls._filter_new_numbers(numbers_data, engine)
+
+        cls._store_winning_numbers(filtered_data, engine)
 
 
-class MegaMillionsScraper(Scraper):
-    download_url = 'https://www.texaslottery.com/export/sites/lottery/Games/Mega_Millions/Winning_Numbers/megamillions.csv'
-    db_address = 'sqlite:///MegaMillions.db'
+class PowerballScraper(FivePlusOneScraper):
+    download_url = "https://www.texaslottery.com/export/sites/lottery/Games/Powerball/Winning_Numbers/powerball.csv"
+    db_address = "sqlite:///Powerball.db"
+
+
+class MegaMillionsScraper(FivePlusOneScraper):
+    download_url = "https://www.texaslottery.com/export/sites/lottery/Games/Mega_Millions/Winning_Numbers/megamillions.csv"
+    db_address = "sqlite:///MegaMillions.db"
 
 
 if __name__ == "__main__":

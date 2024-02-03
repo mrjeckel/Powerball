@@ -1,92 +1,112 @@
-#!/usr/bin/env python3
 import sqlalchemy as db
 import numpy as np
+from typing import Tuple
 
 from sqlalchemy.orm import Session
 from pandas import DataFrame, to_datetime
-from models import WinningNumbers
+from models import LotteryDraw
 from cleaner import PowerballCleaner2015, MegaMillionsCleaner2017
 
-class Analyzer():
-    def __init__(self):
-        self.engine = db.create_engine(self.db_address)
+
+class Analyzer:
+    def __init__(self, model):
+        self.engine = db.create_engine(self.DB_ADDRESS)
         self.winning_numbers = self._read_all_winning_numbers()
-        self.powerball_cleaner = self.cleaner(self.winning_numbers)
-
-        #self._calculate_distribution(self.winning_numbers)
-
-        print(self._get_least_occurring_ball(self.powerball_cleaner.ball_numbers))
-        print(self._get_least_occurring_powerball(self.powerball_cleaner.powerball_numbers))
+        self.ball_draws, self.single_draws = self.cleaner.get_ball_and_powerball_arrays(
+            self.winning_numbers
+        )
+        self.model = model()
 
     def _read_all_winning_numbers(self):
         with Session(bind=self.engine) as sess:
-            query = sess.query(WinningNumbers.date, WinningNumbers.numbers).all()
+            query = sess.query(
+                LotteryDraw.date, LotteryDraw.numbers, LotteryDraw.single
+            ).all()
             dates = to_datetime([result[0] for result in query])
-            stored_numbers = [result[1].strip('[]').split(', ') for result in query]
+            stored_numbers = [
+                (*result[1].strip("[]").split(", "), result[2]) for result in query
+            ]
 
         return DataFrame(data=stored_numbers, index=dates).astype(int)
 
-    def _get_least_occurring_ball(self, ball_numbers):
-        missing = self._check_for_missing(self.ball_range, ball_numbers)
-        normalized_numbers = np.append(ball_numbers, missing)
+    def train(self):
+        """ """
+        self.model.train(self.ball_draws, self.single_draws)
 
-        elements, frequency = np.unique(normalized_numbers, return_counts=True)
-        return np.sort(elements[np.argsort(frequency)[:5]])
+    def predict(self):
+        """ """
+        top_balls, top_single = self.model.predict(self.cleaner.winning_numbers)
+        return f"{top_balls} : {top_single}"
 
-    def _get_least_occurring_powerball(self, powerball_numbers):
-        missing = self._check_for_missing(self.powerball_range, powerball_numbers)
-        normalized_numbers = np.append(powerball_numbers, missing)
 
-        elements, frequency = np.unique(normalized_numbers, return_counts=True)
-        return elements[np.argsort(frequency)[0]]
+class ProbabalisticModel:
+    """ """
 
-    def _check_for_missing(self, numbers, truth):
-            missing = np.where(np.isin(truth, numbers, invert=True))
-            return missing[0]
-
-    def _calculate_distribution(self, dataframe, draw_date):
+    def _get_occurrences(
+        self, draws: np.ndarray[int], draw_range: np.ndarray[int]
+    ) -> np.ndarray[int]:
         """
-        Returns normalized draw distribution
+        Returns draw frequency array populated with 0's for missing draws
         """
-        ball_draws, powerball_draws = self.powerball_cleaner.get_ball_and_powerball_arrays(dataframe)
-        ball_frequency = self._get_occurrences(ball_draws)
-        powerball_frequency = self._get_occurrences(powerball_draws)
+        array, frequency = np.unique(draws, return_counts=True)
 
-        # TODO: this bit is in dire need of unit testing due to int wrapping
-        ball_tmp = 1 / np.power(ball_frequency.size, (ball_frequency + 1), dtype=np.double)
-        ball_distribution = ball_tmp/np.sum(ball_tmp)
+        missing_indices = np.where(np.isin(draw_range, array, invert=True))[0]
 
-        powerball_tmp = 1 / np.power(powerball_frequency.size, (powerball_frequency + 1), dtype=np.double)
-        powerball_distribution = powerball_tmp/np.sum(powerball_tmp)
-
-        return ball_distribution, powerball_distribution
-    
-    def _get_occurrences(self, ball_draws):
-        """
-        Returns frequency with 0 for draws that have not occurred
-        """
-        ball_array, ball_frequency = np.unique(ball_draws, return_counts=True)
-
-        missing_ball_indicies = np.where(np.isin(self.ball_range, ball_array, invert=True))
-        missing_ball_indicies -= np.arange(missing_ball_indicies.size)
+        # Map range index to ball_array index
+        missing_indices -= np.arange(missing_indices.size)
 
         # TODO: unit test the proper filling of 0s
-        return np.insert(ball_frequency, missing_ball_indicies, 0)
-    
+        return np.insert(frequency, missing_indices, 0)
+
+    @staticmethod
+    def _calculate_raw_distribution(
+        frequency: np.ndarray[int],
+    ) -> np.ndarray[np.double]:
+        """ """
+        return 1 / np.power(frequency.size, frequency, dtype=np.longdouble)
+
+    def _calculate_normalized_distribution(
+        self, ball_draws: np.ndarray[int], single_draws: np.ndarray[int]
+    ) -> Tuple[np.ndarray[np.double], np.ndarray[np.double]]:
+        """
+        Returns a normalized probability distribution
+         Probability is first calculated by V = 1 / Size^N
+          Then normalized by V / V.Sum
+        """
+        ball_frequency = self._get_occurrences(ball_draws, self.BALL_RANGE)
+        single_frequency = self._get_occurrences(single_draws, self.SINGLE_RANGE)
+
+        # TODO: this bit is in dire need of unit testing due to float wrapping
+        ball_tmp = self._calculate_raw_distribution(ball_frequency)
+        ball_distribution = ball_tmp / np.sum(ball_tmp)
+
+        single_tmp = self._calculate_raw_distribution(single_frequency)
+        single_distribution = single_tmp / np.sum(single_tmp)
+
+        return ball_distribution, single_distribution
+
+    def train(self, ball_draws, single_draws):
+        """ """
+        self.ball_distribution, self.single_distribution = (
+            self._calculate_normalized_distribution(ball_draws, single_draws)
+        )
+
+    def predict(self):
+        """ """
+        top_balls = (np.argsort(self.ball_distribution) + 1)[-5:]
+        top_single = (np.argsort(self.single_distribution) + 1)[-1]
+        return top_balls, top_single
+
 
 class PowerballAnalyzer(Analyzer):
-    db_address = 'sqlite:///Powerball.db'
-    ball_range = np.arange(1, 70)
-    powerball_range =  np.arange(1, 27)
-    cleaner = PowerballCleaner2015
+    DB_ADDRESS = "sqlite:///Powerball.db"
+    BALL_RANGE = np.arange(1, 70)
+    SINGLE_RANGE = np.arange(1, 27)
+    CLEANER = PowerballCleaner2015
+
 
 class MegaMillionsAnalyzer(Analyzer):
-    db_address = 'sqlite:///MegaMillions.db'
-    ball_range = np.arange(1, 71)
-    powerball_range =  np.arange(1, 26)
-    cleaner = MegaMillionsCleaner2017
-
-
-if __name__ == "__main__":
-    PowerballAnalyzer()
-    #MegaMillionsAnalyzer()
+    DB_ADDRESS = "sqlite:///MegaMillions.db"
+    BALL_RANGE = np.arange(1, 71)
+    SINGLE_RANGE = np.arange(1, 26)
+    CLEANER = MegaMillionsCleaner2017
