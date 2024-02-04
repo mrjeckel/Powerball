@@ -1,5 +1,7 @@
-import numpy as np
+from typing import Union
 
+import numpy as np
+import pandas as pd
 from datetime import datetime as dt
 from scipy import stats
 
@@ -10,9 +12,26 @@ class PowerballCleaner2015:
     White balls 60-69 were added while Powerballs were reduced from 35 to 26
     """
 
-    change_date = dt.strptime("10/04/2015", "%m/%d/%Y")
-    missing_ball_range = np.arange(60, 70)
-    powerball_limit = 26
+    CHANGE_DATE = dt.strptime("10/07/2015", "%m/%d/%Y")
+    MISSING_BALL_RANGE = np.arange(60, 70)
+    SINGLE_LIMIT = 26
+
+    @staticmethod
+    def _one_hot_encode(
+        winning_numbers: Union[pd.DataFrame, pd.Series]
+    ) -> pd.DataFrame:
+        """
+        One-hot encode all ball numbers to columns with 0/1 for draws per date index
+        """
+        if isinstance(winning_numbers, pd.DataFrame):
+            encoded_numbers = pd.get_dummies(winning_numbers[0], dtype=int)
+            for column in winning_numbers.columns[1:]:
+                encoded_column = pd.get_dummies(winning_numbers[column], dtype=int)
+                encoded_numbers[encoded_column == True] = 1
+        else:
+            encoded_numbers = pd.get_dummies(winning_numbers, dtype=int)
+
+        return encoded_numbers
 
     @classmethod
     def _add_missing_balls(cls, winning_numbers):
@@ -20,25 +39,26 @@ class PowerballCleaner2015:
         Add draws for the balls added after the change date
          Each missing ball is added at a frequency of the mode of draws prior to the change date
         """
-        ball_numbers = winning_numbers.loc[:, :4].values.flatten()
-        sliced_numbers = winning_numbers[winning_numbers.index <= cls.change_date]
-        sliced_ball_numbers = sliced_numbers.loc[:, :4].values.flatten()
+        sliced_df = winning_numbers.loc[winning_numbers.index < cls.CHANGE_DATE].drop(
+            columns=cls.MISSING_BALL_RANGE
+        )
+        mode = int(stats.mode(sliced_df.sum()).mode)
+        winning_numbers.iloc[0][cls.MISSING_BALL_RANGE] += mode
 
-        _, frequency = np.unique(sliced_ball_numbers, return_counts=True)
-        mode = int(stats.mode(frequency).mode)
-        return np.append(ball_numbers, np.tile(cls.missing_ball_range, mode))
-
-    @classmethod
-    def _remove_missing_powerballs(cls, winning_numbers):
-        """
-        Remove powerball draws that are not within the current range
-        """
-        powerball_numbers = winning_numbers.values.T[-1].flatten()
-        mask = powerball_numbers <= cls.powerball_limit
-        return powerball_numbers[mask]
+        return winning_numbers
 
     @classmethod
-    def get_ball_and_powerball_arrays(cls, winning_numbers):
+    def _remove_missing_singles(cls, single_numbers):
+        """
+        Remove single draws after the change date by setting their values to np.inf
+        """
+        single_numbers.loc[
+            cls.CHANGE_DATE, single_numbers.columns > cls.SINGLE_LIMIT
+        ] = np.nan
+        return single_numbers
+
+    @classmethod
+    def get_ball_and_powerball_arrays(cls, winning_numbers, ball_columns, single_index):
         """
         Clean the winning numbers with respect to the game format changes
 
@@ -46,10 +66,13 @@ class PowerballCleaner2015:
             Flattened arrays of all draws for balls and powerballs
         """
         # TODO: unit testing to make sure data is getting cleaned properly
-        ball_numbers = cls._add_missing_balls(winning_numbers)
-        powerball_numbers = cls._remove_missing_powerballs(winning_numbers)
+        encoded_ball = cls._one_hot_encode(winning_numbers[ball_columns])
+        encoded_single = cls._one_hot_encode(winning_numbers[single_index])
 
-        return ball_numbers, powerball_numbers
+        ball_draws = cls._add_missing_balls(encoded_ball)
+        single_draws = cls._remove_missing_singles(encoded_single)
+
+        return ball_draws, single_draws
 
 
 class MegaMillionsCleaner2017:

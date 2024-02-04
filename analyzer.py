@@ -1,8 +1,9 @@
 import sqlalchemy as db
 import numpy as np
-from typing import Tuple
+from typing import Union
 
 from sqlalchemy.orm import Session
+import pandas as pd
 from pandas import DataFrame, to_datetime
 from models import LotteryDraw
 from cleaner import PowerballCleaner2015, MegaMillionsCleaner2017
@@ -11,11 +12,13 @@ from cleaner import PowerballCleaner2015, MegaMillionsCleaner2017
 class Analyzer:
     def __init__(self, model):
         self.engine = db.create_engine(self.DB_ADDRESS)
-        self.winning_numbers = self._read_all_winning_numbers()
-        self.ball_draws, self.single_draws = self.cleaner.get_ball_and_powerball_arrays(
-            self.winning_numbers
+        winning_numbers = self._read_all_winning_numbers()
+        self.ball_draws, self.single_draws = self.CLEANER.get_ball_and_powerball_arrays(
+            winning_numbers, self.BALL_COLUMNS, self.SINGLE_INDEX
         )
+
         self.model = model()
+        self.train()
 
     def _read_all_winning_numbers(self):
         with Session(bind=self.engine) as sess:
@@ -42,54 +45,42 @@ class Analyzer:
 class ProbabalisticModel:
     """ """
 
-    def _get_occurrences(
-        self, draws: np.ndarray[int], draw_range: np.ndarray[int]
-    ) -> np.ndarray[int]:
-        """
-        Returns draw frequency array populated with 0's for missing draws
-        """
-        array, frequency = np.unique(draws, return_counts=True)
-
-        missing_indices = np.where(np.isin(draw_range, array, invert=True))[0]
-
-        # Map range index to ball_array index
-        missing_indices -= np.arange(missing_indices.size)
-
-        # TODO: unit test the proper filling of 0s
-        return np.insert(frequency, missing_indices, 0)
-
-    @staticmethod
-    def _calculate_raw_distribution(
-        frequency: np.ndarray[int],
-    ) -> np.ndarray[np.double]:
-        """ """
-        return 1 / np.power(frequency.size, frequency, dtype=np.longdouble)
-
     def _calculate_normalized_distribution(
-        self, ball_draws: np.ndarray[int], single_draws: np.ndarray[int]
-    ) -> Tuple[np.ndarray[np.double], np.ndarray[np.double]]:
+        self, draws: Union[pd.DataFrame, pd.Series]
+    ) -> pd.DataFrame:
         """
         Returns a normalized probability distribution
          Probability is first calculated by V = 1 / Size^N
           Then normalized by V / V.Sum
         """
-        ball_frequency = self._get_occurrences(ball_draws, self.BALL_RANGE)
-        single_frequency = self._get_occurrences(single_draws, self.SINGLE_RANGE)
+        if isinstance(draws, pd.Series):
+            width = 1
+        else:
+            width = draws.shape[1]
 
-        # TODO: this bit is in dire need of unit testing due to float wrapping
-        ball_tmp = self._calculate_raw_distribution(ball_frequency)
-        ball_distribution = ball_tmp / np.sum(ball_tmp)
+        distribution = pd.DataFrame(
+            [[1 / width] * width],
+            columns=np.arange(1, width + 1),
+            index=draws.index,
+        )
 
-        single_tmp = self._calculate_raw_distribution(single_frequency)
-        single_distribution = single_tmp / np.sum(single_tmp)
+        for date, index in zip(draws.iloc[1:].index, range(1, draws.size)):
+            distribution.loc[date] = np.multiply(
+                1 / np.power(draws.size, draws.iloc[index - 1]),
+                distribution.iloc[index - 1],
+            )
+            distribution.loc[date] = distribution.loc[date] / np.sum(
+                distribution.loc[date]
+            )
+        import pdb
 
-        return ball_distribution, single_distribution
+        pdb.set_trace()
+        return distribution
 
     def train(self, ball_draws, single_draws):
         """ """
-        self.ball_distribution, self.single_distribution = (
-            self._calculate_normalized_distribution(ball_draws, single_draws)
-        )
+        self.ball_distribution = self._calculate_normalized_distribution(ball_draws)
+        self.single_distribution = self._calculate_normalized_distribution(single_draws)
 
     def predict(self):
         """ """
@@ -101,12 +92,19 @@ class ProbabalisticModel:
 class PowerballAnalyzer(Analyzer):
     DB_ADDRESS = "sqlite:///Powerball.db"
     BALL_RANGE = np.arange(1, 70)
+    BALL_COLUMNS = np.arange(0, 5)
     SINGLE_RANGE = np.arange(1, 27)
+    SINGLE_INDEX = 5
     CLEANER = PowerballCleaner2015
 
 
 class MegaMillionsAnalyzer(Analyzer):
     DB_ADDRESS = "sqlite:///MegaMillions.db"
     BALL_RANGE = np.arange(1, 71)
+    BALL_COLUMNS = np.arange(0, 5)
     SINGLE_RANGE = np.arange(1, 26)
+    SINGLE_INDEX = 5
     CLEANER = MegaMillionsCleaner2017
+
+
+PowerballAnalyzer(ProbabalisticModel)
