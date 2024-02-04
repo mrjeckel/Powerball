@@ -1,10 +1,12 @@
-import sqlalchemy as db
-import numpy as np
+import pickle
 from typing import Union
 
-from sqlalchemy.orm import Session
+import numpy as np
 import pandas as pd
 from pandas import DataFrame, to_datetime
+import sqlalchemy as db
+from sqlalchemy.orm import Session
+
 from models import LotteryDraw
 from cleaner import PowerballCleaner2015, MegaMillionsCleaner2017
 
@@ -49,8 +51,8 @@ class ProbabalisticModel:
         self, draws: Union[pd.DataFrame, pd.Series]
     ) -> pd.DataFrame:
         """
-        Returns a normalized probability distribution
-         Probability is first calculated by V = 1 / Size^N
+        Returns a normalized probability distribution for each draw
+         Probability is first calculated by V = 1 / Size^B
           Then normalized by V / V.Sum
         """
         if isinstance(draws, pd.Series):
@@ -62,30 +64,42 @@ class ProbabalisticModel:
             [[1 / width] * width],
             columns=np.arange(1, width + 1),
             index=draws.index,
+            dtype=np.longdouble,
         )
 
         for date, index in zip(draws.iloc[1:].index, range(1, draws.size)):
             distribution.loc[date] = np.multiply(
-                1 / np.power(draws.size, draws.iloc[index - 1]),
+                1 / np.power(width, draws.iloc[index - 1]),
                 distribution.iloc[index - 1],
             )
             distribution.loc[date] = distribution.loc[date] / np.sum(
                 distribution.loc[date]
             )
-        import pdb
 
-        pdb.set_trace()
-        return distribution
+        current_distribution = np.multiply(
+            1 / np.power(width, draws.iloc[-1]), distribution.iloc[-1]
+        )
+        current_distribution = current_distribution / np.sum(current_distribution)
+
+        return distribution, current_distribution
 
     def train(self, ball_draws, single_draws):
-        """ """
-        self.ball_distribution = self._calculate_normalized_distribution(ball_draws)
-        self.single_distribution = self._calculate_normalized_distribution(single_draws)
+        """
+        Calculate the probability ball and single draws
+        """
+        self.ball_distribution, self.current_ball_distribution = (
+            self._calculate_normalized_distribution(ball_draws)
+        )
+        self.single_distribution, self.current_single_distribution = (
+            self._calculate_normalized_distribution(single_draws)
+        )
 
     def predict(self):
-        """ """
-        top_balls = (np.argsort(self.ball_distribution) + 1)[-5:]
-        top_single = (np.argsort(self.single_distribution) + 1)[-1]
+        """
+        Take the highest probability draws from both current distributions
+        """
+        top_balls = (np.argsort(self.current_ball_distribution) + 1)[-5:]
+        top_single = (np.argsort(self.current_single_distribution) + 1)[-1]
         return top_balls, top_single
 
 
@@ -105,6 +119,3 @@ class MegaMillionsAnalyzer(Analyzer):
     SINGLE_RANGE = np.arange(1, 26)
     SINGLE_INDEX = 5
     CLEANER = MegaMillionsCleaner2017
-
-
-PowerballAnalyzer(ProbabalisticModel)
