@@ -12,40 +12,98 @@ from cleaner import PowerballCleaner2015, MegaMillionsCleaner2017
 
 
 class Analyzer:
-    def __init__(self, model):
-        self.engine = db.create_engine(self.DB_ADDRESS)
-        winning_numbers = self._read_all_winning_numbers()
-        self.ball_draws, self.single_draws = self.CLEANER.get_ball_and_powerball_arrays(
-            winning_numbers, self.BALL_COLUMNS, self.SINGLE_INDEX
-        )
+    def __init__(self, cleaner, model):
+        """ """
 
+        self.last_draw = None
+        self.cleaner = cleaner()
         self.model = model()
-        self.train()
 
-    def _read_all_winning_numbers(self):
-        with Session(bind=self.engine) as sess:
-            query = sess.query(
-                LotteryDraw.date, LotteryDraw.numbers, LotteryDraw.single
-            ).all()
-            dates = to_datetime([result[0] for result in query])
-            stored_numbers = [
-                (*result[1].strip("[]").split(", "), result[2]) for result in query
-            ]
+        winning_numbers = self._read_winning_numbers()
+        self.last_draw = winning_numbers.index[-1]
 
+        ball_draws, single_draws = self.cleaner.get_ball_and_powerball_arrays(
+            winning_numbers
+        )
+        self.model.train(ball_draws, single_draws)
+        self.graph_performance(ball_draws)
+
+    def _read_winning_numbers(self, partial=False) -> pd.DataFrame:
+        """
+        Read winning numbers from the database
+
+        Parameters:
+            partial[bool]: if True, only return draws after self.last_draw
+        """
+
+        with Session(bind=db.create_engine(self.DB_ADDRESS)) as sess:
+            if self.last_draw and partial:
+                query = sess.query(
+                    LotteryDraw.date, LotteryDraw.numbers, LotteryDraw.single
+                ).filter(LotteryDraw.date > self.last_draw)
+            else:
+                query = sess.query(
+                    LotteryDraw.date, LotteryDraw.numbers, LotteryDraw.single
+                )
+            draws = query.order_by(LotteryDraw.date.asc()).all()
+
+        dates = to_datetime([draw[0] for draw in draws])
+        stored_numbers = [(*draw[1].strip("[]").split(", "), draw[2]) for draw in draws]
         return DataFrame(data=stored_numbers, index=dates).astype(int)
 
-    def train(self):
+    def update(self):
         """ """
-        self.model.train(self.ball_draws, self.single_draws)
+        winning_numbers = self._read_winning_numbers(partial=True)
+        ball_draws, single_draws = self.cleaner.get_ball_and_powerball_arrays(
+            winning_numbers
+        )
+        self.model.update(ball_draws, single_draws)
 
     def predict(self):
         """ """
-        top_balls, top_single = self.model.predict(self.cleaner.winning_numbers)
+        top_balls, top_single = self.model.predict()
         return f"{top_balls} : {top_single}"
+
+    def save(self, path):
+        """
+        Pickle the model
+        """
+        with open(path, "wb") as fd:
+            pickle.dump(self, fd)
+
+    def graph_performance(self, draws):
+        """ """
+        # TODO: Clean data so that we don't have a probability of drawing a non-existant ball
+        predictions = self.model.ball_distribution.agg(
+            lambda x: (x.argsort() + 1)[-5:], axis=1
+        )
+        # TODO: Find count in draws where predictions is 1 -> new Series
+        # TODO: Do the same for single and add them together
+        # TODO: Convert to a ratio of correct/total
+        # TODO: Plot a rolling average of correct %
+        import pdb
+
+        pdb.set_trace()
+
+    @staticmethod
+    def load(path):
+        """
+        Load a pickled model
+        """
+        with open(path, "rb") as fd:
+            return pickle.load(fd)
 
 
 class ProbabalisticModel:
     """ """
+
+    def _fill_cleaned_data(self, distribution: pd.Series, draws: pd.DataFrame, index: int) -> np.ndarray:
+        """
+        Fill the distrubtion when numbers are added or removed from play
+        """
+        distribution = distribution.mask((np.isnan(draws.iloc[index - 1]) & ~np.isnan(draws.iloc[index])), distribution.median())
+        distribution = distribution.mask((~np.isnan(draws.iloc[index - 1]) & np.isnan(draws.iloc[index])), distribution.median())
+        return distribution
 
     def _calculate_normalized_distribution(
         self, draws: Union[pd.DataFrame, pd.Series]
@@ -72,6 +130,8 @@ class ProbabalisticModel:
                 1 / np.power(width, draws.iloc[index - 1]),
                 distribution.iloc[index - 1],
             )
+
+            distribution.loc[date] = self._fill_cleaned_data(distribution.loc[date], draws, index)
             distribution.loc[date] = distribution.loc[date] / np.sum(
                 distribution.loc[date]
             )
@@ -82,6 +142,10 @@ class ProbabalisticModel:
         current_distribution = current_distribution / np.sum(current_distribution)
 
         return distribution, current_distribution
+
+    def update(self):
+        """ """
+        pass
 
     def train(self, ball_draws, single_draws):
         """
@@ -98,17 +162,17 @@ class ProbabalisticModel:
         """
         Take the highest probability draws from both current distributions
         """
-        top_balls = (np.argsort(self.current_ball_distribution) + 1)[-5:]
-        top_single = (np.argsort(self.current_single_distribution) + 1)[-1]
-        return top_balls, top_single
+        import pdb
+
+        pdb.set_trace()
+        top_balls = (np.argsort(self.current_ball_distribution.fillna(0)) + 1)[-5:]
+        top_single = (np.argsort(self.current_single_distribution.fillna(0)) + 1)[-1:]
+        return sorted(top_balls.values), top_single.values
 
 
 class PowerballAnalyzer(Analyzer):
     DB_ADDRESS = "sqlite:///Powerball.db"
     BALL_RANGE = np.arange(1, 70)
-    BALL_COLUMNS = np.arange(0, 5)
-    SINGLE_RANGE = np.arange(1, 27)
-    SINGLE_INDEX = 5
     CLEANER = PowerballCleaner2015
 
 

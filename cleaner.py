@@ -3,7 +3,6 @@ from typing import Union
 import numpy as np
 import pandas as pd
 from datetime import datetime as dt
-from scipy import stats
 
 
 class PowerballCleaner2015:
@@ -12,6 +11,8 @@ class PowerballCleaner2015:
     White balls 60-69 were added while Powerballs were reduced from 35 to 26
     """
 
+    BALL_COLUMNS = np.arange(0, 5)
+    SINGLE_INDEX = 5
     CHANGE_DATE = dt.strptime("10/07/2015", "%m/%d/%Y")
     MISSING_BALL_RANGE = np.arange(60, 70)
     SINGLE_LIMIT = 26
@@ -42,15 +43,17 @@ class PowerballCleaner2015:
         sliced_df = winning_numbers.loc[winning_numbers.index < cls.CHANGE_DATE].drop(
             columns=cls.MISSING_BALL_RANGE
         )
-        mode = int(stats.mode(sliced_df.sum()).mode)
-        winning_numbers.iloc[0][cls.MISSING_BALL_RANGE] += mode
+        winning_numbers.loc[cls.CHANGE_DATE - pd.Timedelta(1, "d")] = 0
+        winning_numbers.loc[
+            winning_numbers.index < cls.CHANGE_DATE, cls.MISSING_BALL_RANGE
+        ] = np.nan
 
-        return winning_numbers
+        return winning_numbers.sort_index()
 
     @classmethod
     def _remove_missing_singles(cls, single_numbers):
         """
-        Remove single draws after the change date by setting their values to np.inf
+        Remove single draws after the change date by setting their values to np.nan
         """
         single_numbers.loc[
             cls.CHANGE_DATE, single_numbers.columns > cls.SINGLE_LIMIT
@@ -58,16 +61,13 @@ class PowerballCleaner2015:
         return single_numbers
 
     @classmethod
-    def get_ball_and_powerball_arrays(cls, winning_numbers, ball_columns, single_index):
+    def get_ball_and_powerball_arrays(cls, winning_numbers):
         """
         Clean the winning numbers with respect to the game format changes
-
-        Returns:
-            Flattened arrays of all draws for balls and powerballs
         """
         # TODO: unit testing to make sure data is getting cleaned properly
-        encoded_ball = cls._one_hot_encode(winning_numbers[ball_columns])
-        encoded_single = cls._one_hot_encode(winning_numbers[single_index])
+        encoded_ball = cls._one_hot_encode(winning_numbers[cls.BALL_COLUMNS])
+        encoded_single = cls._one_hot_encode(winning_numbers[cls.SINGLE_INDEX])
 
         ball_draws = cls._add_missing_balls(encoded_ball)
         single_draws = cls._remove_missing_singles(encoded_single)

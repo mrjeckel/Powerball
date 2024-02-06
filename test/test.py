@@ -26,7 +26,7 @@ class TestProbabalisticModel(unittest.TestCase):
 
     def setUp(self):
         """ """
-        
+
         self.model = ProbabalisticModel()
         self.ball_draws_df = pd.read_csv("data/encoded_ball_draws.csv")
         self.ball_draws_df.columns = self.ball_draws_df.columns.astype(int)
