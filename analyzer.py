@@ -97,12 +97,20 @@ class Analyzer:
 class ProbabalisticModel:
     """ """
 
-    def _fill_cleaned_data(self, distribution: pd.Series, draws: pd.DataFrame, index: int) -> np.ndarray:
+    def _fill_cleaned_data(
+        self, distribution: pd.Series, draws: pd.DataFrame, index: int
+    ) -> np.ndarray:
         """
         Fill the distrubtion when numbers are added or removed from play
         """
-        distribution = distribution.mask((np.isnan(draws.iloc[index - 1]) & ~np.isnan(draws.iloc[index])), distribution.median())
-        distribution = distribution.mask((~np.isnan(draws.iloc[index - 1]) & np.isnan(draws.iloc[index])), distribution.median())
+        distribution = distribution.mask(
+            (np.isnan(draws.iloc[index - 1]) & ~np.isnan(draws.iloc[index])),
+            distribution.median(),
+        )
+        distribution = distribution.mask(
+            (~np.isnan(draws.iloc[index - 1]) & np.isnan(draws.iloc[index])),
+            distribution.median(),
+        )
         return distribution
 
     def _calculate_normalized_distribution(
@@ -131,7 +139,9 @@ class ProbabalisticModel:
                 distribution.iloc[index - 1],
             )
 
-            distribution.loc[date] = self._fill_cleaned_data(distribution.loc[date], draws, index)
+            distribution.loc[date] = self._fill_cleaned_data(
+                distribution.loc[date], draws, index
+            )
             distribution.loc[date] = distribution.loc[date] / np.sum(
                 distribution.loc[date]
             )
