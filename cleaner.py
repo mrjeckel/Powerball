@@ -40,9 +40,6 @@ class PowerballCleaner2015:
         Add draws for the balls added after the change date
          Each missing ball is added at a frequency of the mode of draws prior to the change date
         """
-        sliced_df = winning_numbers.loc[winning_numbers.index < cls.CHANGE_DATE].drop(
-            columns=cls.MISSING_BALL_RANGE
-        )
         winning_numbers.loc[cls.CHANGE_DATE - pd.Timedelta(1, "d")] = 0
         winning_numbers.loc[
             winning_numbers.index < cls.CHANGE_DATE, cls.MISSING_BALL_RANGE
@@ -56,7 +53,7 @@ class PowerballCleaner2015:
         Remove single draws after the change date by setting their values to np.nan
         """
         single_numbers.loc[
-            cls.CHANGE_DATE, single_numbers.columns > cls.SINGLE_LIMIT
+           single_numbers.index >= cls.CHANGE_DATE, single_numbers.columns > cls.SINGLE_LIMIT
         ] = np.nan
         return single_numbers
 

@@ -101,7 +101,7 @@ class ProbabalisticModel:
         self, distribution: pd.Series, draws: pd.DataFrame, index: int
     ) -> np.ndarray:
         """
-        Fill the distrubtion when numbers are added or removed from play
+        Fill the distrubtion when numbers are added to or removed from play
         """
         distribution = distribution.mask(
             (np.isnan(draws.iloc[index - 1]) & ~np.isnan(draws.iloc[index])),
@@ -109,7 +109,7 @@ class ProbabalisticModel:
         )
         distribution = distribution.mask(
             (~np.isnan(draws.iloc[index - 1]) & np.isnan(draws.iloc[index])),
-            distribution.median(),
+            np.nan
         )
         return distribution
 
