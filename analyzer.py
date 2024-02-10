@@ -26,7 +26,7 @@ class Analyzer:
             winning_numbers
         )
         self.model.train(ball_draws, single_draws)
-        self.graph_performance(ball_draws)
+        self.graph_performance(ball_draws, single_draws)
 
     def _read_winning_numbers(self, partial=False) -> pd.DataFrame:
         """
@@ -71,19 +71,37 @@ class Analyzer:
         with open(path, "wb") as fd:
             pickle.dump(self, fd)
 
-    def graph_performance(self, draws):
+    def graph_performance(self, ball_draws, single_draws):
         """ """
-        # TODO: Clean data so that we don't have a probability of drawing a non-existant ball
-        predictions = self.model.ball_distribution.agg(
-            lambda x: (x.argsort() + 1)[-5:], axis=1
+        ball_predictions = self.model.ball_distribution.agg(
+            lambda x: set((x.argsort() + 1)[-5:]), axis=1
+        ).squeeze()
+        single_predictions = self.model.single_distribution.agg(
+            lambda x: (x.argsort() + 1)[-1:], axis=1
+        ).squeeze()
+
+        ball_winners = ball_draws.agg(lambda x: set(x.index[x == 1]), axis=1)
+        single_winners = single_draws.agg(lambda x: x.index[x == 1], axis=1)
+
+        ball_count = ball_winners.combine(
+            ball_predictions, lambda x, y: len(x.intersection(y))
         )
+        single_count = np.where(single_winners == single_predictions, 1, 0)
+
+        accuracy = np.divide(
+            ball_count + single_count,
+            len(ball_winners.iloc[0]) + len(single_winners.iloc[0]),
+        )
+
+        plot = accuracy.rolling(10).mean().plot()
+        fig = plot.get_figure()
+        fig.savefig("plots/test1.png")
+        import pdb;
+        pdb.set_trace()
         # TODO: Find count in draws where predictions is 1 -> new Series
         # TODO: Do the same for single and add them together
         # TODO: Convert to a ratio of correct/total
         # TODO: Plot a rolling average of correct %
-        import pdb
-
-        pdb.set_trace()
 
     @staticmethod
     def load(path):
@@ -108,8 +126,7 @@ class ProbabalisticModel:
             distribution.median(),
         )
         distribution = distribution.mask(
-            (~np.isnan(draws.iloc[index - 1]) & np.isnan(draws.iloc[index])),
-            np.nan
+            (~np.isnan(draws.iloc[index - 1]) & np.isnan(draws.iloc[index])), np.nan
         )
         return distribution
 
@@ -124,7 +141,7 @@ class ProbabalisticModel:
         if isinstance(draws, pd.Series):
             width = 1
         else:
-            width = draws.shape[1]
+            width = draws.iloc[0].dropna().size
 
         distribution = pd.DataFrame(
             [[1 / width] * width],
@@ -151,7 +168,7 @@ class ProbabalisticModel:
         )
         current_distribution = current_distribution / np.sum(current_distribution)
 
-        return distribution, current_distribution
+        return distribution.fillna(0), current_distribution.fillna(0)
 
     def update(self):
         """ """
